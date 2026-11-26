@@ -46,7 +46,7 @@ def http(method, url, headers=None, tries=3, timeout=60):
 
 def latest_run():
     """지금부터 6시간 단위로 거슬러 올라가며, 마지막 단계(72h) 색인 파일이 있는 첫 발표분"""
-    now = dt.datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None, minute=0, second=0, microsecond=0)
     run = now.replace(hour=now.hour - now.hour % 6)
     for _ in range(10):
         for src in SOURCES:
@@ -83,7 +83,7 @@ def fetch_step(run, step, src0, stm0, target):
             with open(target, 'wb') as f:
                 for a, b in rng:
                     f.write(http('GET', base + '.grib2', headers={'Range': f'bytes={a}-{b}'}).content)
-            return len(sel), src
+            return len(sel), src, stm
         except Exception as e:
             err = e; log('실패 → 다음 저장소', str(e)[:160])
     raise SystemExit(f'step {step} 받기 실패: {err}')
@@ -92,7 +92,8 @@ def download(run, src, stm, work):
     files = []
     for k in STEPS:
         f = os.path.join(work, f'f_{k:03d}.grib2')
-        n, used = fetch_step(run, k, src, stm, f)
+        n, used, ustm = fetch_step(run, k, src, stm, f)
+        src, stm = used, ustm      # 다음 단계는 방금 성공한 저장소부터(실패한 곳을 매번 다시 기다리지 않음)
         files.append(f); log(f'받음 step {k} · {n}개 필드 · {used.split("/")[2]}')
     return files
 

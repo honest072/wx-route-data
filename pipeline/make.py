@@ -11,35 +11,89 @@ import eccodes as ec
 LEV = [850, 700, 600, 500, 400, 300, 250, 200, 150]      # 앱 ALLHPA와 같음
 PL = ['u', 'v', 't', 'gh']
 SFC = ['mucape', '10fg', 'cp', 'tp', 'hcc']
-STEPS = list(range(0, 73, 3))                             # 0~72시간, 3시간 간격
+STEPS = list(range(0, int(os.environ.get('WX_MAXSTEP', 72)) + 1, 3))   # 0~72시간, 3시간 간격
 KN = 1.943844                                             # m/s → kt
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 def log(*a): print(time.strftime('%H:%M:%S'), *a, flush=True)
 
 # ---------- 받기 ----------
-def latest_run():
-    from ecmwf.opendata import Client
-    c = Client(source='aws')
-    return c.latest(type='fc', step=STEPS[-1], param='u', levelist=LEV[0])
+# ECMWF 공개 자료 저장소(앞에서부터 시도). 같은 파일이 여러 클라우드에 복제되어 있음
+SOURCES = os.environ.get('WX_SOURCES', 'https://ecmwf-forecasts.s3.eu-central-1.amazonaws.com,'
+                         'https://storage.googleapis.com/ecmwf-open-data,'
+                         'https://data.ecmwf.int/forecasts').split(',')
+UA = {'User-Agent': '7C-Turbulence-pipeline/1 (cabin safety briefing; ECMWF open data)'}
 
-def download(run, work):
-    from ecmwf.opendata import Client
-    c = Client(source='aws')
+def streams(h): return ['oper'] if h in (0, 12) else ['scda', 'oper']
+
+def furl(src, run, stream, step):
+    d = run.strftime('%Y%m%d'); h = run.strftime('%H')
+    return f"{src}/{d}/{h}z/ifs/0p25/{stream}/{d}{h}0000-{step}h-{stream}-fc"
+
+def http(method, url, headers=None, tries=3, timeout=60):
+    import requests
+    last = None
+    for i in range(tries):
+        try:
+            r = requests.request(method, url, headers={**UA, **(headers or {})}, timeout=timeout)
+            if r.status_code in (200, 206): return r
+            last = f'HTTP {r.status_code}'
+            if r.status_code in (403, 404): break          # 없는 파일 — 재시도 무의미
+        except Exception as e:
+            last = type(e).__name__
+        time.sleep([5, 15, 30][min(i, 2)])
+    raise IOError(f'{last} · {url}')
+
+def latest_run():
+    """지금부터 6시간 단위로 거슬러 올라가며, 마지막 단계(72h) 색인 파일이 있는 첫 발표분"""
+    now = dt.datetime.utcnow().replace(minute=0, second=0, microsecond=0)
+    run = now.replace(hour=now.hour - now.hour % 6)
+    for _ in range(10):
+        for src in SOURCES:
+            for stm in streams(run.hour):
+                u = furl(src, run, stm, STEPS[-1]) + '.index'
+                try:
+                    http('HEAD', u, tries=1, timeout=20); log('확인', u); return run, src, stm
+                except Exception as e:
+                    log('없음', str(e)[:140])
+        run -= dt.timedelta(hours=6)
+    raise SystemExit('최근 이틀 안에 받을 수 있는 발표분을 찾지 못함')
+
+def want(meta):
+    lt = meta.get('levtype'); pa = meta.get('param')
+    if lt == 'pl': return pa in PL and int(meta.get('levelist', 0)) in LEV
+    if lt == 'sfc': return pa in SFC or pa in ('10fg3', 'fg10', 'i10fg')
+    return False
+
+def fetch_step(run, step, src0, stm0, target):
+    order = [(src0, stm0)] + [(s, t) for s in SOURCES for t in streams(run.hour) if (s, t) != (src0, stm0)]
+    err = None
+    for src, stm in order:
+        base = furl(src, run, stm, step)
+        try:
+            idx = [json.loads(l) for l in http('GET', base + '.index').text.splitlines() if l.strip()]
+            sel = sorted([m for m in idx if want(m)], key=lambda m: m['_offset'])
+            if not sel: raise IOError('색인에 필요한 변수가 없음')
+            # 붙어 있는 구간은 한 번에
+            rng = []
+            for m in sel:
+                a, b = m['_offset'], m['_offset'] + m['_length'] - 1
+                if rng and a <= rng[-1][1] + 1: rng[-1][1] = max(rng[-1][1], b)
+                else: rng.append([a, b])
+            with open(target, 'wb') as f:
+                for a, b in rng:
+                    f.write(http('GET', base + '.grib2', headers={'Range': f'bytes={a}-{b}'}).content)
+            return len(sel), src
+        except Exception as e:
+            err = e; log('실패 → 다음 저장소', str(e)[:160])
+    raise SystemExit(f'step {step} 받기 실패: {err}')
+
+def download(run, src, stm, work):
     files = []
     for k in STEPS:
-        f1 = os.path.join(work, f'pl_{k:03d}.grib2'); f2 = os.path.join(work, f'sfc_{k:03d}.grib2')
-        for tries in range(3):
-            try:
-                c.retrieve(date=run.strftime('%Y%m%d'), time=run.hour, type='fc', step=k, levtype='pl', levelist=LEV, param=PL, target=f1)
-                c.retrieve(date=run.strftime('%Y%m%d'), time=run.hour, type='fc', step=k, levtype='sfc', param=SFC, target=f2)
-                break
-            except Exception as e:
-                log('재시도', k, e); time.sleep(10)
-        else:
-            raise SystemExit(f'step {k} 받기 실패')
-        files += [f1, f2]
-        log('받음 step', k)
+        f = os.path.join(work, f'f_{k:03d}.grib2')
+        n, used = fetch_step(run, k, src, stm, f)
+        files.append(f); log(f'받음 step {k} · {n}개 필드 · {used.split("/")[2]}')
     return files
 
 # ---------- 읽기 ----------
@@ -160,7 +214,7 @@ def main():
         files = sorted(glob.glob(os.path.join(a.local, '*.grib2')))
         run = dt.datetime.strptime(a.run, '%Y-%m-%dT%H') if a.run else dt.datetime(2026, 1, 1, 0)
     else:
-        run = latest_run(); log('최신 발표', run)
+        run, src, stm = latest_run(); log('최신 발표', run, stm)
         if a.prev and os.path.exists(a.prev) and not a.force:
             try:
                 if json.load(open(a.prev))['run'] == run_ts(run):
@@ -169,7 +223,7 @@ def main():
                     return
             except Exception: pass
         work = os.path.join('/tmp', 'ecmwf'); os.makedirs(work, exist_ok=True)
-        files = download(run, work)
+        files = download(run, src, stm, work)
     allp = [x for R in routes.values() for x in R['p'] + R['o']]
     bb = (min(p[0] for p in allp) - 2, max(p[0] for p in allp) + 2, min(p[1] for p in allp) - 2, max(p[1] for p in allp) + 2)
     data, grid = read(files, bb)

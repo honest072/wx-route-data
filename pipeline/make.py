@@ -1,10 +1,13 @@
-"""7C Turbulence 원자료 파이프라인 (GH Rev.1)
+"""7C Turbulence 원자료 파이프라인 (GH Rev.3 · 교차 확인판)
 ECMWF IFS 0.25° 공개 자료(AWS 복제본, CC-BY-4.0)에서 노선별 계산 지점의 고도별 바람·기온·고도와
 지상 변수(CAPE·돌풍·강수·상층운)를 뽑아 노선마다 작은 JSON으로 저장.
++ NOAA GFS 0.25° 공개 자료(미국 정부 공공 자료)에서 같은 지점의 고도별 바람·기온·고도를 뽑아 같은 파일의 'g'에 추가
+  (교차 확인용 · GFS를 못 받아도 ECMWF 결과는 그대로 올림)
 실행: python pipeline/make.py --out out            (최신 발표분 자동 선택)
       python pipeline/make.py --out out --local DIR  (시험용: 미리 받은 GRIB2 폴더 사용)
 """
 import argparse, json, math, os, sys, time, glob, datetime as dt
+from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 import eccodes as ec
 
@@ -97,6 +100,69 @@ def download(run, src, stm, work):
         files.append(f); log(f'받음 step {k} · {n}개 필드 · {used.split("/")[2]}')
     return files
 
+# ---------- GFS 받기 (교차 확인용) ----------
+GFS_SOURCES = os.environ.get('GFS_SOURCES', 'https://noaa-gfs-bdp-pds.s3.amazonaws.com,'
+                             'https://storage.googleapis.com/global-forecast-system,'
+                             'https://nomads.ncep.noaa.gov/pub/data/nccf/com/gfs/prod').split(',')
+GFS_VAR = {'UGRD': 'u', 'VGRD': 'v', 'TMP': 't', 'HGT': 'gh'}
+
+def gfs_url(src, run, step):
+    d = run.strftime('%Y%m%d'); h = run.strftime('%H')
+    return f"{src}/gfs.{d}/{h}/atmos/gfs.t{h}z.pgrb2.0p25.f{step:03d}"
+
+def gfs_latest():
+    """마지막 단계(72h) 색인이 올라온 가장 최근 GFS 발표분"""
+    now = dt.datetime.now(dt.timezone.utc).replace(tzinfo=None, minute=0, second=0, microsecond=0)
+    run = now.replace(hour=now.hour - now.hour % 6)
+    for _ in range(8):
+        for src in GFS_SOURCES:
+            u = gfs_url(src, run, STEPS[-1]) + '.idx'
+            try:
+                http('HEAD', u, tries=1, timeout=20); log('GFS 확인', u); return run, src
+            except Exception as e:
+                log('GFS 없음', str(e)[:140])
+        run -= dt.timedelta(hours=6)
+    raise IOError('최근 이틀 안에 받을 수 있는 GFS 발표분 없음')
+
+def gfs_sel(text):
+    """.idx('번호:시작바이트:d=…:변수:층:예보:') → 필요한 기압면 필드의 (시작, 끝) 목록"""
+    rows = []
+    for l in text.splitlines():
+        a = l.split(':')
+        if len(a) >= 5 and a[1].isdigit(): rows.append((int(a[1]), a[3], a[4]))
+    want_lv = {f'{l} mb' for l in LEV}; out = []
+    for i, (off, var, lev) in enumerate(rows):
+        if var in GFS_VAR and lev in want_lv:
+            end = rows[i + 1][0] - 1 if i + 1 < len(rows) else None
+            out.append((off, end, var, lev))
+    return out
+
+def gfs_step(run, step, src0, target):
+    order = [src0] + [s for s in GFS_SOURCES if s != src0]; err = None
+    for src in order:
+        base = gfs_url(src, run, step)
+        try:
+            sel = gfs_sel(http('GET', base + '.idx').text)
+            if len(sel) < len(GFS_VAR) * len(LEV): raise IOError(f'색인 필드 부족 {len(sel)}')
+            def one(x):
+                a, b = x[0], x[1]
+                return http('GET', base, headers={'Range': f'bytes={a}-' + ('' if b is None else str(b))}).content
+            with ThreadPoolExecutor(8) as ex: parts = list(ex.map(one, sel))
+            with open(target, 'wb') as f:
+                for c in parts: f.write(c)
+            return len(sel), src
+        except Exception as e:
+            err = e; log('GFS 실패 → 다음 저장소', str(e)[:160])
+    raise IOError(f'GFS step {step} 받기 실패: {err}')
+
+def gfs_download(run, src, work):
+    files = []
+    for k in STEPS:
+        f = os.path.join(work, f'g_{k:03d}.grib2')
+        n, src = gfs_step(run, k, src, f)
+        files.append(f); log(f'GFS 받음 step {k} · {n}개 필드 · {src.split("/")[2]}')
+    return files
+
 # ---------- 읽기 ----------
 class Grid:
     def __init__(self, h):
@@ -154,9 +220,26 @@ def read(files, bb):
     return data, grid
 
 # ---------- 계산 ----------
+GFS_ERR = ''
 def run_ts(run): return int(run.replace(tzinfo=dt.timezone.utc).timestamp())
 
-def build(data, grid, routes, run, out):
+def pl_block(data, grid, pts, steps, full):
+    """[단계][지점][층] 풍속(0.1kt)·풍향, full이면 기온(0.1℃)·고도(m)도"""
+    I, W = grid.weights(pts); at = lambda arr: (arr[I] * W).sum(axis=1)
+    o = {'ws': [], 'wd': []}
+    if full: o.update(t=[], gh=[])
+    for k in steps:
+        ws, wd, tt, gh = [], [], [], []
+        for l in LEV:
+            u = at(data[(k, 'u', l)]); v = at(data[(k, 'v', l)])
+            ws.append(np.round(np.hypot(u, v) * KN * 10).astype(int)); wd.append(np.round((270 - np.degrees(np.arctan2(v, u))) % 360).astype(int) % 360)
+            if full: tt.append(np.round((at(data[(k, 't', l)]) - 273.15) * 10).astype(int)); gh.append(np.round(at(data[(k, 'gh', l)])).astype(int))
+        o['ws'].append(np.array(ws).T.tolist()); o['wd'].append(np.array(wd).T.tolist())
+        if full: o['t'].append(np.array(tt).T.tolist()); o['gh'].append(np.array(gh).T.tolist())
+    return o
+
+def build(data, grid, routes, run, out, gfs=None):
+    """gfs = (data, grid, run) 또는 None"""
     os.makedirs(os.path.join(out, 'r'), exist_ok=True)
     steps = sorted({k[0] for k in data})
     miss = [(k, p, l) for k in steps for p in PL for l in LEV if (k, p, l) not in data]
@@ -200,36 +283,68 @@ def build(data, grid, routes, run, out):
                     res['s']['pr'].append(np.round(pr * 100).astype(int).tolist())
                     res['s']['hcc'].append(np.round((hcc if hcc is not None else z) * 100).astype(int).tolist())
         res['o'] = R['o']; res['ow'] = res.pop('o_')
+        if gfs:
+            gd, gg, gr = gfs; gsteps = sorted({k[0] for k in gd})
+            g = {'run': run_ts(gr), 'steps': gsteps, 'm': pl_block(gd, gg, R['p'], gsteps, True)}
+            ow = pl_block(gd, gg, R['o'], gsteps, False); g['ow'] = ow
+            res['g'] = g
         with open(os.path.join(out, 'r', key + '.json'), 'w') as f: json.dump(res, f, separators=(',', ':'))
         nfile += 1
     man = {'v': 1, 'src': 'ECMWF IFS 0.25° open data (AWS) · CC-BY-4.0', 'model': 'ecmwf_ifs025', 'run': run_ts(run),
-           'runIso': run.strftime('%Y-%m-%dT%H:00Z'), 'steps': steps, 'lev': LEV, 'made': int(time.time()), 'routes': sorted(routes)}
+           'runIso': run.strftime('%Y-%m-%dT%H:00Z'), 'steps': steps, 'lev': LEV, 'made': int(time.time()), 'routes': sorted(routes),
+           'gfs': ({'src': 'NOAA GFS 0.25° (public domain)', 'model': 'gfs025', 'run': run_ts(gfs[2]), 'runIso': gfs[2].strftime('%Y-%m-%dT%H:00Z')} if gfs else None)}
+    if GFS_ERR: man['gfsErr'] = GFS_ERR[:200]
     with open(os.path.join(out, 'manifest.json'), 'w') as f: json.dump(man, f, separators=(',', ':'))
-    log('노선 파일', nfile, '개 저장 · 발표', man['runIso'])
+    log('노선 파일', nfile, '개 저장 · 발표', man['runIso'], '· GFS', man['gfs']['runIso'] if gfs else '없음')
+
+def gfs_check_missing(gd):
+    steps = sorted({k[0] for k in gd})
+    miss = [(k, p, l) for k in steps for p in PL for l in LEV if (k, p, l) not in gd]
+    if miss or len(steps) < len(STEPS): raise IOError(f'GFS 자료 빠짐 {miss[:3]} 단계 {len(steps)}')
 
 def main():
-    ap = argparse.ArgumentParser(); ap.add_argument('--out', default='out'); ap.add_argument('--local'); ap.add_argument('--run'); ap.add_argument('--force', action='store_true'); ap.add_argument('--prev', help='직전 manifest.json(같은 발표분이면 건너뜀)')
+    global GFS_ERR
+    ap = argparse.ArgumentParser(); ap.add_argument('--out', default='out'); ap.add_argument('--local'); ap.add_argument('--local-gfs'); ap.add_argument('--run'); ap.add_argument('--gfs-run')
+    ap.add_argument('--force', action='store_true'); ap.add_argument('--prev', help='직전 manifest.json(같은 발표분이면 건너뜀)'); ap.add_argument('--no-gfs', action='store_true')
     a = ap.parse_args()
     routes = json.load(open(os.path.join(HERE, 'routes.json'), encoding='utf-8'))['routes']
+    allp = [x for R in routes.values() for x in R['p'] + R['o']]
+    bb = (min(p[0] for p in allp) - 2, max(p[0] for p in allp) + 2, min(p[1] for p in allp) - 2, max(p[1] for p in allp) + 2)
+    gfs, grun, gsrc = None, None, None
     if a.local:
         files = sorted(glob.glob(os.path.join(a.local, '*.grib2')))
         run = dt.datetime.strptime(a.run, '%Y-%m-%dT%H') if a.run else dt.datetime(2026, 1, 1, 0)
+        if a.local_gfs:
+            grun = dt.datetime.strptime(a.gfs_run, '%Y-%m-%dT%H') if a.gfs_run else run
+            gfiles = sorted(glob.glob(os.path.join(a.local_gfs, '*.grib2')))
     else:
         run, src, stm = latest_run(); log('최신 발표', run, stm)
+        if not a.no_gfs:
+            try: grun, gsrc = gfs_latest(); log('GFS 최신 발표', grun)
+            except Exception as e: GFS_ERR = f'GFS 발표분 확인 실패: {e}'; log(GFS_ERR)
         if a.prev and os.path.exists(a.prev) and not a.force:
             try:
-                if json.load(open(a.prev))['run'] == run_ts(run):
-                    log('이미 처리한 발표분 — 건너뜀'); print('SKIP')
+                pv = json.load(open(a.prev)); pg = (pv.get('gfs') or {}).get('run')
+                if pv['run'] == run_ts(run) and (grun is None or pg == run_ts(grun)):
+                    log('이미 처리한 발표분(ECMWF·GFS 모두 같음) — 건너뜀'); print('SKIP')
                     if os.environ.get('GITHUB_OUTPUT'): open(os.environ['GITHUB_OUTPUT'], 'a').write('skip=1\n')
                     return
             except Exception: pass
         work = os.path.join('/tmp', 'ecmwf'); os.makedirs(work, exist_ok=True)
         files = download(run, src, stm, work)
-    allp = [x for R in routes.values() for x in R['p'] + R['o']]
-    bb = (min(p[0] for p in allp) - 2, max(p[0] for p in allp) + 2, min(p[1] for p in allp) - 2, max(p[1] for p in allp) + 2)
+        gfiles = None
+        if grun:
+            try: gfiles = gfs_download(grun, gsrc, work)
+            except Exception as e: GFS_ERR = str(e); log('GFS 받기 실패 — ECMWF만 올림:', e)
     data, grid = read(files, bb)
     log('읽음', len(data), '개 필드 · 격자', grid.key())
-    build(data, grid, routes, run, a.out)
+    if grun and gfiles:
+        try:
+            gd, gg = read(gfiles, bb); gfs_check_missing(gd); gfs = (gd, gg, grun)
+            log('GFS 읽음', len(gd), '개 필드 · 격자', gg.key())
+        except (Exception, SystemExit) as e:
+            GFS_ERR = f'GFS 읽기 실패: {e}'; log(GFS_ERR); gfs = None
+    build(data, grid, routes, run, a.out, gfs)
 
 if __name__ == '__main__':
     main()

@@ -45,3 +45,8 @@ ECMWF(유럽중기예보센터) IFS 0.25° 공개 예보를 AWS에서 직접 받
 | `pipeline/requirements.txt` | 필요한 파이썬 구성 요소 |
 
 결과(`data` 가지): `manifest.json`(발표 시각·단계·노선 목록), `r/<출발>-<도착>.json`(노선별 값, 정수로 줄여 저장 — 풍속 kt×10, 기온 ℃×10, 고도 m, 돌풍 kt×10, 강수 mm/h×100, 상층운 %)
+
+## Rev.9 추가 (2026.11.27)
+- adsb/route.py: 주간 ADS-B 작업(adsb-weekly)에서 노선·방향별 대표 경로를 '여러 편 중앙값'으로 계산해 route.json·app.json(RTE)에 담음
+  (기존 대표 한 편 방식은 그날 그 편의 기상 회피·관제 지시 흔적이 남아 김포→제주 등에서 경로가 지그재그로 보였음)
+- 앱 경로와 계산 지점(pipeline/routes.json)은 서로 같아야 하므로, 첫 실행 결과(route.json)를 받아 다음 앱 개정 때 함께 교체함

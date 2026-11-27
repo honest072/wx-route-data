@@ -3,6 +3,7 @@
 · 분석값이 아니라 예보값으로 비교함 — 분석값은 관측을 이미 반영해 만든 값이라 검증 의미가 없음
 · 모델: ECMWF IFS · NOAA GFS · ECMWF AIFS (같은 날짜·관측소·층만 모아 공정 비교)
 · 층: 관측 지정 기압면 850·700·500·400·300·250·200·150hPa (600hPa는 관측 지정면이 아님)
++ GH Rev.8: 항공기 실측 바람(ADS-B, adsb 브랜치 obs.json · 00/06/12/18Z ±30분)도 24시간 전 예보와 비교(고도는 표준대기로 기압 환산 후 기압면 사이 보간)
 출력: <out>/summary.json(보고서용 요약) · <out>/pairs.csv(원값)
 """
 import argparse, csv, io, json, math, os, re, sys, time, zipfile, datetime as dt
@@ -132,6 +133,7 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--out', default='verif')
     ap.add_argument('--days', type=int, default=30); ap.add_argument('--leads', default='24,48'); ap.add_argument('--models', default='ifs,gfs,aifs')
     ap.add_argument('--radius', type=float, default=200, help='노선 지점에서 관측소까지 최대 거리(km)')
+    ap.add_argument('--adsb', default=os.environ.get('ADSB_OBS', ''), help='ADS-B 관측 obs.json 경로·주소(비우면 저장소 adsb 브랜치)')
     ap.add_argument('--max-st', type=int, default=24); ap.add_argument('--local-sonde'); ap.add_argument('--local-model'); ap.add_argument('--now')
     a = ap.parse_args(); os.makedirs(a.out, exist_ok=True)
     leads = [int(x) for x in a.leads.split(',')]; models = a.models.split(',')
@@ -148,13 +150,33 @@ def main():
     obs = load_sondes(sts, t0, t1, a.local_sonde)
     sts = [s for s in sts if s['id'] in obs]
     if not sts: raise SystemExit('관측 자료를 받지 못함')
+    # ADS-B 실측 바람
+    AO = []
+    try:
+        src = a.adsb or (f"https://raw.githubusercontent.com/{os.environ['GITHUB_REPOSITORY']}/adsb/obs.json" if os.environ.get('GITHUB_REPOSITORY') else '')
+        if src:
+            J = json.load(open(src, encoding='utf-8')) if os.path.exists(src) else M.http('GET', src, timeout=60).json()
+            for t, la, lo, alt, wd, ws, oat in J['obs']:
+                if not (t0 - 1800 <= t <= t1 + 1800): continue
+                V = int(round(t / 21600) * 21600)
+                if abs(t - V) <= 1800 and 5000 <= alt <= 45000: AO.append((V, la, lo, alt, wd, ws))
+            log('ADS-B 관측', len(AO), '개')
+    except Exception as e:
+        log('ADS-B 관측 없음:', str(e)[:120])
+    avts = sorted({x[0] for x in AO})
     vts = sorted({t for o in obs.values() for t in o})
-    bb = (min(s['lat'] for s in sts) - 1, max(s['lat'] for s in sts) + 1, min(s['lon'] for s in sts) - 1, max(s['lon'] for s in sts) + 1)
+    la_ = [s['lat'] for s in sts] + [x[1] for x in AO]; lo_ = [s['lon'] for s in sts] + [x[2] for x in AO]
+    bb = (min(la_) - 1, max(la_) + 1, min(lo_) - 1, max(lo_) + 1)
+    AOV = {}
+    for x in AO: AOV.setdefault(x[0], []).append(x)
+    apairs = []
+    def p_of(ft):
+        return 1013.25 * (1 - 6.8756e-6 * ft) ** 5.2559 if ft <= 36089 else 226.32 * math.exp(-(ft - 36089) / 20806)
     spts = [[s['lat'], s['lon']] for s in sts]
     pairs = []; work = '/tmp/sonde'; os.makedirs(work, exist_ok=True); got = {m: 0 for m in models}; miss = {m: 0 for m in models}
     for m in models:
         for L in leads:
-            for V in vts:
+            for V in sorted(set(vts) | (set(avts) if L == 24 else set())):
                 run = dt.datetime.fromtimestamp(V - L * 3600, dt.timezone.utc).replace(tzinfo=None)
                 try:
                     if a.local_model:
@@ -163,6 +185,19 @@ def main():
                     else:
                         f = os.path.join(work, 'm.grib2'); fetch_model(m, run, L, f)
                     data, grid = M.read([f], bb); I, W = grid.weights(spts); at = lambda arr: (arr[I] * W).sum(axis=1)
+                    if L == 24 and V in AOV:
+                        X = AOV[V]; I2, W2 = grid.weights([[x[1], x[2]] for x in X]); at2 = lambda arr: (arr[I2] * W2).sum(axis=1)
+                        LU = {l: at2(data[(L, 'u', l)]) for l in SLV if (L, 'u', l) in data}; LV_ = {l: at2(data[(L, 'v', l)]) for l in SLV if (L, 'v', l) in data}
+                        lv_ = sorted(LU, reverse=True)
+                        for i, (V_, la, lo, alt, wd, ws) in enumerate(X):
+                            p = p_of(alt)
+                            if len(lv_) < 2 or p > lv_[0] or p < lv_[-1]: continue
+                            k = next(k for k in range(len(lv_) - 1) if lv_[k] >= p >= lv_[k + 1]); pa, pb = lv_[k], lv_[k + 1]
+                            f_ = (math.log(pa) - math.log(p)) / (math.log(pa) - math.log(pb))
+                            mu = (LU[pa][i] + (LU[pb][i] - LU[pa][i]) * f_) * KN; mv = (LV_[pa][i] + (LV_[pb][i] - LV_[pa][i]) * f_) * KN
+                            ou, ov = -ws * math.sin(math.radians(wd)), -ws * math.cos(math.radians(wd))
+                            apairs.append([m, V, la, lo, alt, ws, wd, round(math.hypot(mu, mv), 1), round((270 - math.degrees(math.atan2(mv, mu))) % 360), round(mu - ou, 2), round(mv - ov, 2)])
+                    if V not in vts: got[m] += 1; continue
                     U = {l: at(data[(L, 'u', l)]) for l in SLV if (L, 'u', l) in data}; Vv = {l: at(data[(L, 'v', l)]) for l in SLV if (L, 'v', l) in data}
                     T = {l: at(data[(L, 't', l)]) for l in SLV if (L, 't', l) in data}
                     for i, s in enumerate(sts):
@@ -215,7 +250,26 @@ def main():
                             'strong': stat([p for p in P if p[4] in CRU and p[5] >= 80]),
                             'all': stat(P),
                             'st': {s['id']: stat([p for p in P if p[2] == s['id'] and p[4] in CRU]) for s in sts}}
-    summ = {'v': 1, 'made': int(time.time()), 'days': a.days, 'from': t0, 'to': t1, 'leads': leads, 'models': models, 'levels': SLV, 'cruise': CRU,
+    # ADS-B 요약: 모든 모델에 값이 있는 관측만 · 앱 주 자료(IFS·AIFS 평균)도
+    ak = lambda p: (p[1], p[2], p[3], p[4]); ac = {}
+    for p in apairs: ac.setdefault(ak(p), {})[p[0]] = p
+    acom = {k: v for k, v in ac.items() if all(m in v for m in base_models)}
+    def astat(ps):
+        if not ps: return None
+        du = np.array([p[9] for p in ps]); dv = np.array([p[10] for p in ps]); ds = np.array([p[7] - p[5] for p in ps])
+        return {'n': len(ps), 'vrmse': round(float(np.sqrt(np.mean(du ** 2 + dv ** 2))), 2), 'sbias': round(float(ds.mean()), 2)}
+    AB = [(5000, 15000), (15000, 25000), (25000, 35000), (35000, 45000)]; AS = {}
+    for m in base_models + (['mix'] if 'ifs' in base_models and 'aifs' in base_models else []):
+        if m == 'mix':
+            P = []
+            for v in acom.values():
+                q, r = v['ifs'], v['aifs']; P.append(['mix'] + q[1:7] + [None, None, round((q[9] + r[9]) / 2, 2), round((q[10] + r[10]) / 2, 2)])
+                P[-1][7] = q[5] + ((q[7] - q[5]) + (r[7] - r[5])) / 2
+        else:
+            P = [v[m] for v in acom.values()]
+        AS[m] = {'all': astat(P), 'band': {f'{lo // 1000}-{hi // 1000}': astat([p for p in P if lo <= p[4] < hi]) for lo, hi in AB}}
+    summ_adsb = {'n': len(acom), 'slots': len({k[0] for k in acom}), 'stats': AS}
+    summ = {'v': 1, 'made': int(time.time()), 'adsb': summ_adsb, 'days': a.days, 'from': t0, 'to': t1, 'leads': leads, 'models': models, 'levels': SLV, 'cruise': CRU,
             'stations': [{**s, 'n': len(obs[s['id']])} for s in sts], 'got': got, 'miss': miss, 'common': len(common), 'stats': S,
             'note': '예보(24·48시간 전 발표분) vs 라디오존데 관측 · 모든 모델에 값이 있는 경우만 비교 · vrmse=바람 벡터 오차 제곱평균제곱근(kt)'}
     json.dump(summ, open(os.path.join(a.out, 'summary.json'), 'w', encoding='utf-8'), ensure_ascii=False)
@@ -226,6 +280,11 @@ def main():
         for L in leads:
             c = S[m][str(L)]['cruise']
             if c: log(f'{m} +{L}h 순항대 바람 오차 {c["vrmse"]}kt (n={c["n"]}) · 풍속 치우침 {c["sbias"]}kt')
+    with open(os.path.join(a.out, 'adsb_pairs.csv'), 'w', newline='', encoding='utf-8-sig') as f:
+        w = csv.writer(f); w.writerow(['모델', '시각UTC', '위도', '경도', '고도ft', '관측풍속kt', '관측풍향', '모델풍속kt', '모델풍향', '동서오차kt', '남북오차kt'])
+        for p in apairs: w.writerow([p[0], dt.datetime.fromtimestamp(p[1], dt.timezone.utc).strftime('%Y-%m-%d %H')] + p[2:])
+    for m, v in AS.items():
+        if v['all']: log(f'ADS-B {m}: 바람 오차 {v["all"]["vrmse"]}kt (n={v["all"]["n"]})')
     log('완료 · 공정 비교 대상', len(common), '건')
 
 if __name__ == '__main__':

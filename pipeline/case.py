@@ -28,7 +28,7 @@ def runs_for(at):
 def main():
     ap = argparse.ArgumentParser(); ap.add_argument('--at', required=True, help='사례 시각 UTC, 예 2026-08-22T05:24')
     ap.add_argument('--routes', required=True, help='노선(쉼표), 예 GMP-CJU,CJU-GMP'); ap.add_argument('--id', required=True)
-    ap.add_argument('--out', default='case_out'); ap.add_argument('--after', type=float, default=3, help='사례 시각 뒤로 덮을 시간(h)')
+    ap.add_argument('--out', default='case_out'); ap.add_argument('--after', type=float, default=8, help='사례 시각 뒤로 덮을 시간(h)')
     a = ap.parse_args()
     at = dt.datetime.strptime(a.at, '%Y-%m-%dT%H:%M')
     allr = json.load(open(os.path.join(HERE, 'routes.json'), encoding='utf-8'))['routes']

@@ -1,5 +1,5 @@
 name: adsb-weekly
-# 공개 ADS-B 항적(adsb.lol, ODbL) 최근 14일 → 비행 단계 시각·편명-노선·실제 사용 활주로 → adsb 브랜치(app.json)
+# 공개 ADS-B 항적(adsb.lol, ODbL) 최근 14일 → 비행 단계 시각·편명-노선·실제 사용 활주로·실측 바람(얇은 층 급변·검증 표본) → adsb 브랜치
 on:
   schedule:
     - cron: '7 18 * * 2'          # 매주 수요일 03:07(한국)
@@ -31,7 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p pub && cp adsb/app.json adsb/rwy.json adsb/pfx_app.json adsb/pfa_app.json adsb/tod2.log pub/ 2>/dev/null || true
+          mkdir -p pub && cp adsb/app.json adsb/rwy.json adsb/shear.json adsb/obs.json adsb/pfx_app.json adsb/pfa_app.json adsb/route.json adsb/tod2.log pub/ 2>/dev/null || true
           cd pub
           git init -b adsb
           git config user.name "wx-bot"; git config user.email "wx-bot@users.noreply.github.com"

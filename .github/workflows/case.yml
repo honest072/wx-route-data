@@ -1,0 +1,50 @@
+name: case-replay
+# 과거 난기류 사례 재현: 그 시각에 앱이 받았을 발표분들로 노선 파일 생성 → case 브랜치(기존 사례 유지)
+on:
+  workflow_dispatch:
+    inputs:
+      at:
+        description: '사례 시각(UTC) 예 2026-08-22T05:24  (한국시각 − 9시간)'
+        required: true
+      routes:
+        description: '노선(쉼표) 예 GMP-CJU,CJU-GMP'
+        required: true
+      id:
+        description: '사례 이름(영문·숫자) 예 7C155-20260822'
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: case-replay
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pipeline/requirements.txt
+      - run: pip install -r pipeline/requirements.txt
+      - name: 기존 사례 가져오기
+        run: |
+          mkdir -p prev
+          if git fetch origin case --depth=1; then git archive FETCH_HEAD | tar -x -C prev; fi
+      - name: 사례 자료 만들기
+        run: python -I pipeline/case.py --at "${{ inputs.at }}" --routes "${{ inputs.routes }}" --id "${{ inputs.id }}" --out prev
+      - name: 올리기(case 브랜치)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd prev
+          git init -b case
+          git config user.name "wx-bot"; git config user.email "wx-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "case ${{ inputs.id }}"
+          git push -f https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git case

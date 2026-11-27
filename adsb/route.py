@@ -4,7 +4,7 @@
 방식
 - 편마다 '대권 기준 진행 구간 40칸별 측면 거리(NM)'만 저장(rprof.json, 주마다 누적 · 같은 IATA 시즌 안에서만 사용)
 - 대표 경로 = 칸별 편 중앙값 → 3칸 이동 중앙값·평균으로 잔흔들림 제거 (대표 한 편 방식의 지그재그 없음)
-- 표본이 모자라면(정제 후 12편 미만 또는 덮인 구간 80% 미만) 기간을 14→28→42…일로 넓힘(시즌 시작일까지)
+- 표본이 모자라면(정제 후 12편 미만, 관측으로 덮인 칸 80% 미만, 중간 빈 구간 80NM 초과) 기간을 14→28→42…일로 넓힘(시즌 시작일까지)
 - 그래도 모자라면 국적 등록기(71x) 다른 기종(A320·A321 등)까지 포함 — 같은 항로를 탐
 - 정제: 경로 길이 > 대권×1.35+40NM 제외(두 구간이 이어진 항적), 중앙 경로에서 평균 12NM 넘게 벗어난 편 제외(기상 회피·관제 지시)
 - 두 갈래 노선: 편들을 2묶음으로 나눠 작은 묶음이 35% 이상이고 두 묶음이 15NM 넘게 떨어져 있으면 큰 묶음을 대표로, 갈래 비율(lanes)을 함께 기록
@@ -54,9 +54,16 @@ def consensus(P, need):
 
 
 def smooth(c):
+    """3칸 이동 중앙값(한 칸짜리 튐 제거) → 가벼운 가중 평균(1:2:1) — 실제 꺾임은 남기고 잔흔들림만 줄임"""
     def win(a, i): return [x for x in a[max(0, i - 1):i + 2] if x is not None]
     m = [statistics.median(win(c, i)) if c[i] is not None else None for i in range(len(c))]
-    return [sum(win(m, i)) / len(win(m, i)) if m[i] is not None else None for i in range(len(m))]
+    o = []
+    for i in range(len(m)):
+        if m[i] is None: o.append(None); continue
+        a = m[i - 1] if i > 0 and m[i - 1] is not None else m[i]; b = m[i + 1] if i + 1 < len(m) and m[i + 1] is not None else m[i]
+        v = (a + 2 * m[i] + b) / 4
+        o.append(v if abs(v - c[i] if c[i] is not None else 0) <= 4 else m[i])   # 꺾임에서 4NM 넘게 깎이면 중앙값 그대로
+    return o
 
 
 def fill(c):
@@ -87,14 +94,26 @@ def two_groups(P):
 
 
 def build(P):
+    P0 = P
     c0 = consensus(P, max(4, int(len(P) * 0.3)))
     keep = [q for q in P if dev(q, c0) <= 12]
     if len(keep) >= max(8, len(P) * 0.5):
         P = keep
-    c = fill(smooth(consensus(P, max(4, int(len(P) * 0.3)))))
-    cov = sum(v is not None for v in c) / NB
+    cnt = [sum(q[i] is not None for q in P) for i in range(NB)]
+    raw = consensus(P, max(4, int(max(cnt) * 0.25)))   # 칸별 기준: 가장 많이 관측된 칸의 25% 이상
+    c = fill(smooth(raw))
+    cov = sum(v is not None for v in raw) / NB          # 실제 관측으로 덮인 칸(채운 칸 제외)
+    k = [i for i, v in enumerate(raw) if v is not None]; g = run = 0
+    for i in range(k[0], k[-1] + 1) if k else []:
+        run = run + 1 if raw[i] is None else 0; g = max(g, run)
     sp = statistics.median([dev(q, c) for q in P]) if P else 99
-    return c, cov, sp, len(P)
+    # 채운 칸(관측 부족) 검증: 3편 이상 관측된 칸의 중앙값과 25NM 넘게 다르면 '불확실'(다른 경로를 타는 편이 있음)
+    bad = 0
+    for i in range(NB):
+        if raw[i] is None and c[i] is not None:
+            v = [q[i] for q in P0 if q[i] is not None]   # 정제 전 전체 편 기준
+            if len(v) >= 3 and abs(statistics.median(v) - c[i]) > 25: bad += 1
+    return c, cov, sp, len(P), g + (100 if bad else 0)
 
 
 def to_w(A, B, L, c):
@@ -159,16 +178,22 @@ def main(dirs, today=None):
                         g1, g2 = G; c1 = consensus(g1, max(3, len(g1) // 3)); c2 = consensus(g2, max(3, len(g2) // 3))
                         if len(g2) / len(P) >= 0.35 and dev(c1, c2) > 15:
                             lanes = [round(len(g1) / len(P), 2), round(len(g2) / len(P), 2)]; P = g1
-                    c, cov, sp, n = build(P)
-                    res = (c, cov, sp, n, W, only737, lanes)
-                    if n >= NEED and cov >= COV: break
+                    c, cov, sp, n, gp = build(P)
+                    res = (c, cov, sp, n, W, only737, lanes, gp)
+                    if n >= NEED and cov >= COV and gp * L * (HI - LO) / NB <= 80: break
                 if W >= days_all: break
-            if res and res[3] >= NEED and res[1] >= COV: break
+            if res and res[3] >= NEED and res[1] >= COV and res[7] * L * (HI - LO) / NB <= 80: break
         if not res:
             out[key] = {'n': len(rows), 'qual': 'few'}; continue
-        c, cov, sp, n, W, only737, lanes = res
-        qual = 'ok' if n >= 8 and cov >= 0.7 and sp <= 12 else ('wide' if sp > 12 else 'gap')
-        o = {'n': n, 'days': W, 'b737': only737, 'cov': round(cov, 2), 'sp': round(sp, 1), 'qual': qual, 'w': to_w(A, B, L, c)}
+        c, cov, sp, n, W, only737, lanes, gp = res
+        # 사용 가능: 8편 이상 · 퍼짐 12NM 이하 · 실제 관측 칸 40% 이상 · 중간 빈 구간 80NM 이하
+        # (양끝 빈 칸은 앱이 공항까지 곧게 이음 — 제주 부근 저고도처럼 수신이 안 되는 곳)
+        gnm = round(gp * L * (HI - LO) / NB)   # 중간 빈 구간 길이(NM) — 그 사이는 곧게 이음
+        if gp >= 100: out[key] = {'n': n, 'days': W, 'qual': 'unsure', 'cov': round(cov, 2), 'sp': round(sp, 1)}; continue   # 공백 구간을 다른 경로로 지나는 편이 있음 → 기존 경로 유지
+        qual = ('ok' if n >= 8 and cov >= 0.4 and gnm <= 80 and sp <= 12 else
+                'part' if n >= 12 and cov >= 0.4 and sp <= 8 else          # 바다 위 등 수신 공백이 길어 그 구간은 관측점 사이 직선
+                'wide' if sp > 12 else 'gap')
+        o = {'n': n, 'days': W, 'b737': only737, 'cov': round(cov, 2), 'gapNM': gnm, 'sp': round(sp, 1), 'qual': qual, 'w': to_w(A, B, L, c)}
         if lanes: o['lanes'] = lanes
         out[key] = o
     json.dump(out, open('route.json', 'w'), ensure_ascii=False)

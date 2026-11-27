@@ -1,0 +1,45 @@
+name: sonde-verify
+# 라디오존데 대조: 노선 주변 고층 관측 vs ECMWF·GFS·AIFS 24·48시간 예보 → verif 브랜치(보고서 HTML이 읽음)
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '비교 기간(일) — GFS 과거분 보관이 짧으면 30 권장'
+        default: '30'
+      models:
+        description: '모델(쉼표로 구분)'
+        default: 'ifs,gfs,aifs'
+  schedule:
+    - cron: '23 22 * * 0'        # 매주 월요일 07:23(한국) 자동 갱신
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sonde-verify
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pipeline/requirements.txt
+      - run: pip install -r pipeline/requirements.txt
+      - name: 관측·예보 받기·비교
+        run: python -I pipeline/sondes.py --out verif --days ${{ inputs.days || '30' }} --models ${{ inputs.models || 'ifs,gfs,aifs' }}
+      - name: 올리기(verif 브랜치)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd verif
+          git init -b verif
+          git config user.name "wx-bot"; git config user.email "wx-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "verif $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -f https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git verif

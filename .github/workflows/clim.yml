@@ -1,0 +1,50 @@
+name: clim-60d
+# '평소 대비' 자료: ECMWF 과거 60일(하루 2회) 순항 고도 바람 → clim 브랜치
+on:
+  schedule:
+    - cron: '41 10 * * *'        # 매일 1회(UTC 10:41 = 한국 19:41) — 새 시각 2개만 받아 붙임
+  workflow_dispatch:
+    inputs:
+      days:
+        description: '보관 일수'
+        default: '60'
+      max_new:
+        description: '이번에 새로 받을 최대 시각 수(처음 채우기는 120)'
+        default: '120'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: clim
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: pipeline/requirements.txt
+      - run: pip install -r pipeline/requirements.txt
+      - name: 이전 결과 가져오기
+        run: |
+          mkdir -p prev
+          if git fetch origin clim --depth=1; then git archive FETCH_HEAD | tar -x -C prev; fi
+          ls prev/c 2>/dev/null | wc -l
+      - name: 과거분 받기·계산
+        run: python -I pipeline/clim.py --out prev --days ${{ inputs.days || '60' }} --max-new ${{ inputs.max_new || '8' }}
+      - name: 올리기(clim 브랜치)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd prev
+          git init -b clim
+          git config user.name "wx-bot"; git config user.email "wx-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "clim $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push -f https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git clim

@@ -178,10 +178,26 @@ def main():
                 except Exception as e:
                     miss[m] += 1; log('건너뜀', m, f'+{L}h', dt.datetime.fromtimestamp(V, dt.timezone.utc).strftime('%m-%d %HZ'), str(e)[:90])
             log(f'{m} +{L}h 완료 · 누적 받음 {got[m]} · 건너뜀 {miss[m]}')
+    # GH Rev.6: 앱 주 자료(IFS·AIFS 바람 평균)도 같은 방식으로 채점
+    if 'ifs' in models and 'aifs' in models:
+        I = {(p[1], p[2], p[3], p[4]): p for p in pairs if p[0] == 'ifs'}; mix = []
+        for p in pairs:
+            if p[0] != 'aifs': continue
+            q = I.get((p[1], p[2], p[3], p[4]))
+            if not q: continue
+            uv_ = lambda s_, d_: (-s_ * math.sin(math.radians(d_)), -s_ * math.cos(math.radians(d_)))
+            a1, a2 = uv_(q[8], q[9]), uv_(p[8], p[9]); mu, mv = (a1[0] + a2[0]) / 2, (a1[1] + a2[1]) / 2
+            mt = None if q[10] is None else q[10]
+            mix.append(['mix', p[1], p[2], p[3], p[4], p[5], p[6], p[7], round(math.hypot(mu, mv), 1), round((math.degrees(math.atan2(-mu, -mv)) + 360) % 360), mt,
+                        round((q[11] + p[11]) / 2, 2), round((q[12] + p[12]) / 2, 2)])
+        base_models = list(models); pairs += mix
+    else:
+        base_models = list(models)
     # 공정 비교: 모든 모델에 값이 있는 (리드·관측소·시각·층)만
     key = lambda p: (p[1], p[2], p[3], p[4]); cnt = {}
     for p in pairs: cnt.setdefault(key(p), set()).add(p[0])
-    common = {k for k, v in cnt.items() if len(v) == len(models)}
+    common = {k for k, v in cnt.items() if all(m in v for m in base_models)}
+    if 'mix' in {p[0] for p in pairs}: models = base_models + ['mix']; got['mix'] = got.get('ifs', 0); miss['mix'] = miss.get('ifs', 0)
     def stat(ps):
         if not ps: return None
         du = np.array([p[11] for p in ps]); dv = np.array([p[12] for p in ps]); ds = np.array([p[8] - p[5] for p in ps])

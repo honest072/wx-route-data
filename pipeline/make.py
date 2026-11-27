@@ -1,4 +1,4 @@
-"""7C Turbulence 원자료 파이프라인 (GH Rev.5 · + ECMWF AIFS 세 번째 모델 · 직전 발표분 보관)
+"""7C Turbulence 원자료 파이프라인 (GH Rev.6 · AIFS 측면 지점 추가 — 앱 주 자료 바람 = IFS·AIFS 평균)
 ECMWF IFS 0.25° 공개 자료(AWS 복제본, CC-BY-4.0)에서 노선별 계산 지점의 고도별 바람·기온·고도와
 지상 변수(CAPE·돌풍·강수·상층운)를 뽑아 노선마다 작은 JSON으로 저장.
 + NOAA GFS 0.25° 공개 자료(미국 정부 공공 자료)에서 같은 지점의 고도별 바람·기온·고도를 뽑아 같은 파일의 'g'에 추가
@@ -353,6 +353,7 @@ def build(data, grid, routes, run, out, gfs=None, aifs=None, prevdir=None):
         if aifs:
             ad, ag, ar = aifs; asteps = sorted({k[0] for k in ad})
             res['a'] = {'run': run_ts(ar), 'steps': asteps, 'lev': LEV, 'm': pl_block(ad, ag, R['p'], asteps, True, LEV)}
+            res['a']['ow'] = pl_block(ad, ag, R['o'], asteps, False, LEV)   # GH Rev.6: 측면 지점(앱의 IFS·AIFS 평균용)
         with open(os.path.join(out, 'r', key + '.json'), 'w') as f: json.dump(res, f, separators=(',', ':'))
         nfile += 1
     man = {'v': 1, 'src': 'ECMWF IFS 0.25° open data (AWS) · CC-BY-4.0', 'model': 'ecmwf_ifs025', 'run': run_ts(run),

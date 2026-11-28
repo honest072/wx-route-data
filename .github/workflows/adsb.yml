@@ -27,13 +27,15 @@ jobs:
           python-version: '3.12'
       - name: 이전 누적 자료(대표 경로용 편별 값)
         run: git clone --depth 1 -b adsb https://github.com/${GITHUB_REPOSITORY}.git adsb/prev || true
+      - name: 공항 기상 보관분(복행·홀딩·회항과 짝지을 METAR)
+        run: git clone --depth 1 -b wxlog https://github.com/${GITHUB_REPOSITORY}.git adsb/wx || true
       - name: 항적 받기·계산
         run: bash adsb/run.sh ${{ inputs.days || '14' }}
       - name: 올리기(adsb 브랜치)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p pub && cp adsb/app.json adsb/rwy.json adsb/shear.json adsb/obs.json adsb/pfx_app.json adsb/pfa_app.json adsb/route.json adsb/rprof.json adsb/tod2.log pub/ 2>/dev/null || true
+          mkdir -p pub && cp adsb/app.json adsb/rwy.json adsb/shear.json adsb/obs.json adsb/pfx_app.json adsb/pfa_app.json adsb/route.json adsb/rprof.json adsb/apops.json adsb/apev.json adsb/tod2.log pub/ 2>/dev/null || true
           cd pub
           git init -b adsb
           git config user.name "wx-bot"; git config user.email "wx-bot@users.noreply.github.com"

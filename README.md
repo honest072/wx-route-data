@@ -50,3 +50,8 @@ ECMWF(유럽중기예보센터) IFS 0.25° 공개 예보를 AWS에서 직접 받
 - adsb/route.py: 주간 ADS-B 작업(adsb-weekly)에서 노선·방향별 대표 경로를 '여러 편 중앙값'으로 계산해 route.json·app.json(RTE)에 담음
   (기존 대표 한 편 방식은 그날 그 편의 기상 회피·관제 지시 흔적이 남아 김포→제주 등에서 경로가 지그재그로 보였음)
 - 앱 경로와 계산 지점(pipeline/routes.json)은 서로 같아야 하므로, 첫 실행 결과(route.json)를 받아 다음 앱 개정 때 함께 교체함
+
+
+## GH Rev.11 추가
+- `wxlog-hourly`(매시간): 취항 공항 METAR·TAF·국제 SIGMET을 AWC 공개 API에서 받아 `wxlog` 브랜치에 날짜별 보관(90일), 돌풍 35kt 이상·윈드시어·뇌우·공항 주변 SIGMET이 있던 날을 `cases.json`(사례 후보)으로 자동 기록
+- `adsb-weekly`에 `apops.py` 추가: 항적에서 복행·홀딩(선회 대기)·회항을 보수적 기준으로 찾아 그때 METAR(돌풍 구간·윈드시어)와 짝지은 공항별 실측 요약 `apops.json`(앱 착륙 여건 띠에 표시), 편별 누적 `apev.json`(180일)

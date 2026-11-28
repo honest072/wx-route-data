@@ -21,11 +21,12 @@
 "ws": false,
 "ts": true,
 "first": 1795851000,
-"last": 1795882200,
+"last": 1795896600,
 "n": 11,
 "sig": [
 "VVTS 3 TS",
-"VVTS 4 TS"
+"VVTS 4 TS",
+"VVTS 5 TS"
 ]
 },
 {
@@ -35,10 +36,11 @@
 "ws": false,
 "ts": false,
 "first": 1795867800,
-"last": 1795882200,
+"last": 1795896600,
 "n": 0,
 "sig": [
-"VVTS 4 TS"
+"VVTS 4 TS",
+"VVTS 5 TS"
 ]
 },
 {
@@ -48,11 +50,12 @@
 "ws": false,
 "ts": false,
 "first": 1795853400,
-"last": 1795882200,
+"last": 1795896600,
 "n": 0,
 "sig": [
 "VVTS 3 TS",
-"VVTS 4 TS"
+"VVTS 4 TS",
+"VVTS 5 TS"
 ]
 },
 {
@@ -63,7 +66,7 @@
 "ts": true,
 "first": 1795874400,
 "last": 1795878000,
-"n": 7
+"n": 9
 },
 {
 "icao": "RKTN",
@@ -96,10 +99,11 @@
 "ws": false,
 "ts": false,
 "first": 1795856400,
-"last": 1795883820,
+"last": 1795896660,
 "n": 0,
 "sig": [
 "RJJJ P02 TURB",
+"RJJJ P03 TURB",
 "RKRR C03 TS",
 "RKRR C04 TS"
 ]
@@ -111,12 +115,13 @@
 "ws": true,
 "ts": false,
 "first": 1795852800,
-"last": 1795878000,
-"n": 23,
+"last": 1795885200,
+"n": 26,
 "sig": [
 "RKRR C03 TS",
 "RKRR C04 TS",
-"RKRR D05 TURB"
+"RKRR D05 TURB",
+"RKRR D07 TURB"
 ]
 },
 {
@@ -140,14 +145,15 @@
 "ws": false,
 "ts": true,
 "first": 1795855800,
-"last": 1795878000,
-"n": 4,
+"last": 1795885200,
+"n": 6,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
 "RJJJ J04 TURB",
 "RJJJ J05 TURB",
-"RJJJ J06 TURB"
+"RJJJ J06 TURB",
+"RJJJ P03 TURB"
 ]
 },
 {
@@ -157,14 +163,15 @@
 "ws": false,
 "ts": false,
 "first": 1795855800,
-"last": 1795883880,
+"last": 1795896720,
 "n": 0,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
 "RJJJ J04 TURB",
 "RJJJ J05 TURB",
-"RJJJ J06 TURB"
+"RJJJ J06 TURB",
+"RJJJ J07 TURB"
 ]
 },
 {
@@ -175,7 +182,7 @@
 "ts": true,
 "first": 1795851000,
 "last": 1795878000,
-"n": 34,
+"n": 35,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
@@ -192,13 +199,14 @@
 "ts": true,
 "first": 1795856400,
 "last": 1795876200,
-"n": 21,
+"n": 22,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
 "RJJJ J04 TURB",
 "RJJJ J05 TURB",
-"RJJJ J06 TURB"
+"RJJJ J06 TURB",
+"RJJJ J07 TURB"
 ]
 },
 {
@@ -208,11 +216,12 @@
 "ws": false,
 "ts": false,
 "first": 1795860480,
-"last": 1795883880,
+"last": 1795896720,
 "n": 0,
 "sig": [
 "RJJJ J05 TURB",
 "RJJJ J06 TURB",
+"RJJJ J07 TURB",
 "RJJJ Q01 TURB",
 "RJJJ Q02 TURB"
 ]

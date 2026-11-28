@@ -61,12 +61,12 @@
 {
 "icao": "RPVM",
 "day": "20261128",
-"gmax": 5,
+"gmax": 6,
 "ws": false,
 "ts": true,
 "first": 1795874400,
-"last": 1795878000,
-"n": 10
+"last": 1795888800,
+"n": 11
 },
 {
 "icao": "RKTN",
@@ -115,8 +115,8 @@
 "ws": true,
 "ts": false,
 "first": 1795852800,
-"last": 1795885200,
-"n": 29,
+"last": 1795888800,
+"n": 31,
 "sig": [
 "RKRR C03 TS",
 "RKRR C04 TS",
@@ -146,7 +146,7 @@
 "ts": true,
 "first": 1795855800,
 "last": 1795885200,
-"n": 8,
+"n": 9,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",

@@ -55,6 +55,16 @@
 ]
 },
 {
+"icao": "RPVM",
+"day": "20261128",
+"gmax": 4,
+"ws": false,
+"ts": true,
+"first": 1795874400,
+"last": 1795874400,
+"n": 1
+},
+{
 "icao": "RKTN",
 "day": "20261128",
 "gmax": 0,
@@ -100,8 +110,8 @@
 "ws": true,
 "ts": false,
 "first": 1795852800,
-"last": 1795870800,
-"n": 16,
+"last": 1795874400,
+"n": 19,
 "sig": [
 "RKRR C03 TS",
 "RKRR C04 TS",
@@ -130,7 +140,7 @@
 "ts": true,
 "first": 1795855800,
 "last": 1795870800,
-"n": 1,
+"n": 2,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
@@ -146,7 +156,7 @@
 "ws": false,
 "ts": false,
 "first": 1795855800,
-"last": 1795873800,
+"last": 1795875720,
 "n": 0,
 "sig": [
 "RJJJ J02 TURB",
@@ -163,8 +173,8 @@
 "ws": true,
 "ts": true,
 "first": 1795851000,
-"last": 1795870800,
-"n": 21,
+"last": 1795874400,
+"n": 27,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
@@ -180,8 +190,8 @@
 "ws": false,
 "ts": true,
 "first": 1795856400,
-"last": 1795870800,
-"n": 7,
+"last": 1795874400,
+"n": 13,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
@@ -197,7 +207,7 @@
 "ws": false,
 "ts": false,
 "first": 1795860480,
-"last": 1795874880,
+"last": 1795879260,
 "n": 0,
 "sig": [
 "RJJJ J05 TURB",

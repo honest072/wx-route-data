@@ -37,11 +37,12 @@
 "ws": false,
 "ts": false,
 "first": 1795867800,
-"last": 1795896600,
+"last": 1795911000,
 "n": 0,
 "sig": [
 "VVTS 4 TS",
-"VVTS 5 TS"
+"VVTS 5 TS",
+"VVTS 6 TS"
 ]
 },
 {
@@ -62,12 +63,12 @@
 {
 "icao": "RPVM",
 "day": "20261128",
-"gmax": 6,
+"gmax": 8,
 "ws": false,
 "ts": true,
 "first": 1795874400,
-"last": 1795888800,
-"n": 12
+"last": 1795899600,
+"n": 13
 },
 {
 "icao": "RKTN",
@@ -164,7 +165,7 @@
 "ws": false,
 "ts": false,
 "first": 1795855800,
-"last": 1795896720,
+"last": 1795908000,
 "n": 0,
 "sig": [
 "RJJJ J02 TURB",
@@ -196,12 +197,12 @@
 {
 "icao": "RJBB",
 "day": "20261128",
-"gmax": 43,
+"gmax": 44,
 "ws": false,
 "ts": true,
 "first": 1795856400,
-"last": 1795896720,
-"n": 23,
+"last": 1795897800,
+"n": 25,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
@@ -219,7 +220,7 @@
 "ws": false,
 "ts": false,
 "first": 1795860480,
-"last": 1795896720,
+"last": 1795908000,
 "n": 0,
 "sig": [
 "RJJJ J05 TURB",

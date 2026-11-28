@@ -11,4 +11,5 @@ python3 -I rwy.py "${DIRS[@]}"
 python3 -I wind.py "${DIRS[@]}"
 python3 -I route.py "${DIRS[@]}"
 python3 -I pack.py "$S~$E"
+python3 -I apops.py "${DIRS[@]}" || echo "apops 실패(건너뜀)"
 rm -rf d????

@@ -1,0 +1,38 @@
+name: wxlog-hourly
+# 취항 공항 METAR·TAF·국제 SIGMET 매시간 보관 + 착륙·이륙이 어려웠을 수 있는 날 사례 후보 자동 기록 → wxlog 브랜치
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wxlog
+  cancel-in-progress: false
+
+jobs:
+  log:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: 이전 보관분
+        run: |
+          git clone --depth 1 -b wxlog https://github.com/${GITHUB_REPOSITORY}.git out || (mkdir -p out && cd out && git init -b wxlog)
+      - name: 받기·누적
+        run: python -I pipeline/wxlog.py out
+      - name: 올리기(wxlog 브랜치)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd out
+          git config user.name "wx-bot"; git config user.email "wx-bot@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "변경 없음"; exit 0; fi
+          git commit -q -m "wxlog $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git HEAD:wxlog

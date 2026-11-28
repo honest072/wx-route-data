@@ -20,10 +20,24 @@
 "ws": false,
 "ts": true,
 "first": 1795851000,
-"last": 1795860000,
+"last": 1795882200,
 "n": 11,
 "sig": [
-"VVTS 3 TS"
+"VVTS 3 TS",
+"VVTS 4 TS"
+]
+},
+{
+"icao": "VVPQ",
+"day": "20261128",
+"gmax": 0,
+"ws": false,
+"ts": false,
+"first": 1795867800,
+"last": 1795882200,
+"n": 0,
+"sig": [
+"VVTS 4 TS"
 ]
 },
 {
@@ -33,10 +47,11 @@
 "ws": false,
 "ts": false,
 "first": 1795853400,
-"last": 1795867800,
+"last": 1795882200,
 "n": 0,
 "sig": [
-"VVTS 3 TS"
+"VVTS 3 TS",
+"VVTS 4 TS"
 ]
 },
 {
@@ -46,10 +61,11 @@
 "ws": false,
 "ts": false,
 "first": 1795856400,
-"last": 1795870800,
+"last": 1795885200,
 "n": 0,
 "sig": [
-"RKRR C03 TS"
+"RKRR C03 TS",
+"RKRR C04 TS"
 ]
 },
 {
@@ -60,7 +76,7 @@
 "ts": false,
 "first": 1795861800,
 "last": 1795863600,
-"n": 4
+"n": 6
 },
 {
 "icao": "RKPK",
@@ -69,10 +85,12 @@
 "ws": false,
 "ts": false,
 "first": 1795856400,
-"last": 1795870800,
+"last": 1795883820,
 "n": 0,
 "sig": [
-"RKRR C03 TS"
+"RJJJ P02 TURB",
+"RKRR C03 TS",
+"RKRR C04 TS"
 ]
 },
 {
@@ -82,10 +100,12 @@
 "ws": true,
 "ts": false,
 "first": 1795852800,
-"last": 1795863600,
-"n": 13,
+"last": 1795870800,
+"n": 16,
 "sig": [
-"RKRR C03 TS"
+"RKRR C03 TS",
+"RKRR C04 TS",
+"RKRR D05 TURB"
 ]
 },
 {
@@ -95,26 +115,28 @@
 "ws": false,
 "ts": true,
 "first": 1795851300,
-"last": 1795857420,
+"last": 1795885200,
 "n": 10,
 "sig": [
-"RKRR C03 TS"
+"RKRR C03 TS",
+"RKRR C04 TS"
 ]
 },
 {
 "icao": "RJOM",
 "day": "20261128",
-"gmax": 0,
+"gmax": 39,
 "ws": false,
-"ts": false,
+"ts": true,
 "first": 1795855800,
-"last": 1795870200,
-"n": 0,
+"last": 1795870800,
+"n": 1,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
 "RJJJ J04 TURB",
-"RJJJ J05 TURB"
+"RJJJ J05 TURB",
+"RJJJ J06 TURB"
 ]
 },
 {
@@ -124,45 +146,48 @@
 "ws": false,
 "ts": false,
 "first": 1795855800,
-"last": 1795870200,
+"last": 1795873800,
 "n": 0,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
 "RJJJ J04 TURB",
-"RJJJ J05 TURB"
+"RJJJ J05 TURB",
+"RJJJ J06 TURB"
 ]
 },
 {
 "icao": "RJFF",
 "day": "20261128",
-"gmax": 31,
-"ws": false,
+"gmax": 35,
+"ws": true,
 "ts": true,
 "first": 1795851000,
-"last": 1795865400,
-"n": 15,
+"last": 1795870800,
+"n": 21,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
 "RJJJ J04 TURB",
-"RJJJ P01 TURB"
+"RJJJ P01 TURB",
+"RJJJ P02 TURB"
 ]
 },
 {
 "icao": "RJBB",
 "day": "20261128",
-"gmax": 38,
+"gmax": 41,
 "ws": false,
 "ts": true,
 "first": 1795856400,
-"last": 1795865400,
-"n": 3,
+"last": 1795870800,
+"n": 7,
 "sig": [
 "RJJJ J02 TURB",
 "RJJJ J03 TURB",
 "RJJJ J04 TURB",
-"RJJJ J05 TURB"
+"RJJJ J05 TURB",
+"RJJJ J06 TURB"
 ]
 },
 {
@@ -176,7 +201,9 @@
 "n": 0,
 "sig": [
 "RJJJ J05 TURB",
-"RJJJ Q01 TURB"
+"RJJJ J06 TURB",
+"RJJJ Q01 TURB",
+"RJJJ Q02 TURB"
 ]
 }
 ]
